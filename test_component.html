@@ -3,47 +3,71 @@
 <head><meta charset="UTF-8"/></head>
 <body style="font-family:sans-serif;padding:12px;background:#fff;">
 <p id="status" style="color:#666;font-size:.8rem;">Initialising...</p>
+<p id="origin" style="color:#999;font-size:.7rem;"></p>
 <button onclick="sendHello()" style="margin-top:8px;padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer;">
   Send "hello" to Streamlit
 </button>
 
 <script>
-// Read the streamlitUrl query param — Streamlit passes this so we know
-// the exact origin to target with postMessage
 const params = new URLSearchParams(window.location.search);
 const streamlitUrl = params.get('streamlitUrl');
 const targetOrigin = streamlitUrl ? new URL(streamlitUrl).origin : '*';
 
-document.getElementById('status').textContent = 'targetOrigin: ' + targetOrigin;
+document.getElementById('origin').textContent = 
+  'streamlitUrl param: ' + (streamlitUrl || 'none') + 
+  ' | targetOrigin: ' + targetOrigin +
+  ' | frames deep: ' + (window === window.top ? 'top' : window === window.parent ? 'one level' : 'nested');
+
+// Try posting to both parent and top — one of them is Streamlit
+function postToStreamlit(msg) {
+  try { window.parent.postMessage(msg, targetOrigin); } catch(e) {}
+  try { window.parent.postMessage(msg, '*'); } catch(e) {}
+  if (window.top !== window.parent) {
+    try { window.top.postMessage(msg, targetOrigin); } catch(e) {}
+    try { window.top.postMessage(msg, '*'); } catch(e) {}
+  }
+}
 
 const Streamlit = {
   setComponentReady: function() {
-    window.parent.postMessage({ type: 'streamlit:componentReady', apiVersion: 1 }, targetOrigin);
+    postToStreamlit({ type: 'streamlit:componentReady', apiVersion: 1 });
   },
   setComponentValue: function(value) {
-    window.parent.postMessage({ type: 'streamlit:setComponentValue', value: value }, targetOrigin);
+    postToStreamlit({ type: 'streamlit:setComponentValue', value: value });
   },
   setFrameHeight: function(h) {
-    window.parent.postMessage({ type: 'streamlit:setFrameHeight', height: h }, targetOrigin);
+    postToStreamlit({ type: 'streamlit:setFrameHeight', height: h });
   },
   onRender: function(cb) {
     window.addEventListener('message', function(e) {
-      if (e.data.type === 'streamlit:render') cb(e);
+      if (e.data && e.data.type === 'streamlit:render') cb(e);
     });
   }
 };
 
-Streamlit.setFrameHeight(100);
+document.getElementById('status').textContent = 'Sending componentReady...';
+Streamlit.setFrameHeight(120);
 Streamlit.setComponentReady();
 
+// Retry setComponentReady a few times in case of timing issues
+let attempts = 0;
+const retry = setInterval(function() {
+  if (attempts++ < 5) {
+    Streamlit.setComponentReady();
+  } else {
+    clearInterval(retry);
+  }
+}, 500);
+
 Streamlit.onRender(function(e) {
-  document.getElementById('status').textContent = 'Render received! args: ' + JSON.stringify(e.data.args);
+  clearInterval(retry);
+  document.getElementById('status').textContent = 'SUCCESS — render received! args: ' + JSON.stringify(e.data.args);
   Streamlit.setFrameHeight(document.body.scrollHeight + 10);
 });
 
 function sendHello() {
   Streamlit.setComponentValue('hello from iframe');
-  document.getElementById('status').textContent = 'Value sent to Streamlit!';
+  document.getElementById('status').textContent = 'Value sent!';
 }
 </script>
 </body>
