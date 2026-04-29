@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+body{background:#fff;padding:6px;overflow:hidden;}
+table{border-collapse:collapse;width:100%;font-size:.78rem;}
+thead th{background:#1e2d3d;color:#a0bcd4;padding:7px 10px;text-align:left;font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;}
+td{padding:6px 10px;border-bottom:1px solid #e9ecef;white-space:nowrap;}
+tr:nth-child(even) td{background:#fafbfc;}
+tr:hover td{background:#e8f4ff!important;cursor:pointer;}
+tr.sel td{background:#eff6ff!important;border-left:3px solid #2563eb;}
+.cb{accent-color:#2563eb;cursor:pointer;}
+.bar{background:#1a2332;padding:8px 12px;margin-top:6px;border-radius:4px;display:none;align-items:center;gap:8px;}
+.bar.show{display:flex;}
+.badge{background:#2563eb;color:#fff;border-radius:4px;padding:2px 8px;font-size:.7rem;font-weight:700;white-space:nowrap;}
+.ids{flex:1;background:#0f172a;border:1px solid #334155;border-radius:4px;padding:4px 8px;font-size:.68rem;font-family:monospace;color:#60a5fa;outline:none;}
+.btn{border:none;border-radius:4px;padding:5px 12px;font-size:.68rem;font-weight:700;cursor:pointer;white-space:nowrap;background:#334155;color:#94a3b8;}
+</style>
+</head>
+<body>
+<table>
+  <thead><tr>
+    <th style="width:32px"><input type="checkbox" class="cb" id="all" onclick="toggleAll()"/></th>
+    <th>ID</th><th>Title</th><th>House</th><th style="text-align:right">GMV</th><th>End Date</th>
+  </tr></thead>
+  <tbody id="tb"></tbody>
+</table>
+<div class="bar" id="bar">
+  <span class="badge" id="cnt">0 selected</span>
+  <input class="ids" id="ids" readonly/>
+  <button class="btn" onclick="clearAll()">Clear</button>
+</div>
+
+<script>
+// ── Inline Streamlit component bridge ──────────────────────────────────────
+// Replicates the essential parts of streamlit-component-lib without the npm dep.
+const Streamlit = {
+  _RENDER_EVENT: "streamlit:render",
+  _SET_COMPONENT_VALUE: "streamlit:setComponentValue",
+  _SET_FRAME_HEIGHT: "streamlit:setFrameHeight",
+  _COMPONENT_READY: "streamlit:componentReady",
+
+  setComponentReady: function() {
+    window.parent.postMessage({ type: this._COMPONENT_READY, apiVersion: 1 }, "*");
+  },
+
+  setComponentValue: function(value) {
+    window.parent.postMessage({ type: this._SET_COMPONENT_VALUE, value: value }, "*");
+  },
+
+  setFrameHeight: function(height) {
+    window.parent.postMessage({ type: this._SET_FRAME_HEIGHT, height: height }, "*");
+  },
+
+  onRender: function(callback) {
+    window.addEventListener("message", function(event) {
+      if (event.data.type === Streamlit._RENDER_EVENT) {
+        callback(event);
+      }
+    });
+  }
+};
+
+// ── Grid logic ─────────────────────────────────────────────────────────────
+let rows = [];
+let sel = new Set();
+
+function render() {
+  document.getElementById('tb').innerHTML = rows.map(r => `
+    <tr class="${sel.has(r.id)?'sel':''}" onclick="toggle('${r.id}')">
+      <td><input type="checkbox" class="cb" ${sel.has(r.id)?'checked':''}
+          onclick="event.stopPropagation();toggle('${r.id}')"/></td>
+      <td style="font-family:monospace;color:#2563eb;font-weight:700;">${r.id}</td>
+      <td>${r.title}</td><td>${r.house}</td>
+      <td style="text-align:right;font-weight:600;">${r.gmv}</td>
+      <td>${r.end}</td>
+    </tr>`).join('');
+  Streamlit.setFrameHeight(document.body.scrollHeight + 10);
+}
+
+function toggle(id) {
+  sel.has(id) ? sel.delete(id) : sel.add(id);
+  render(); updateBar(); sendValue();
+}
+
+function toggleAll() {
+  const c = document.getElementById('all').checked;
+  c ? rows.forEach(r => sel.add(r.id)) : sel.clear();
+  render(); updateBar(); sendValue();
+}
+
+function clearAll() {
+  sel.clear();
+  document.getElementById('all').checked = false;
+  render(); updateBar(); sendValue();
+}
+
+function updateBar() {
+  const s = [...sel].join(',');
+  document.getElementById('ids').value = s;
+  document.getElementById('cnt').textContent = sel.size + ' selected';
+  document.getElementById('bar').className = sel.size > 0 ? 'bar show' : 'bar';
+}
+
+function sendValue() {
+  Streamlit.setComponentValue([...sel]);
+}
+
+// Receive rows from Streamlit
+Streamlit.onRender(function(event) {
+  const args = event.data.args;
+  if (args && args.rows) {
+    rows = args.rows;
+    render();
+  }
+});
+
+// Signal ready
+Streamlit.setComponentReady();
+Streamlit.setFrameHeight(100);
+</script>
+</body>
+</html>
